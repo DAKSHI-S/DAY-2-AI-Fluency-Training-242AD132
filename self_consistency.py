@@ -1,49 +1,58 @@
+import os
 from collections import Counter
-from config import client, MODEL, banner
-from cot_compare import COT_PROMPT, QUESTIONS
+from dotenv import load_dotenv
+from groq import Groq
 
-RUNS = 5
-TEMPERATURE = 1.2
+load_dotenv()
 
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-def final_answer(text):
-    for line in reversed(text.splitlines()):
-        if "final answer" in line.lower():
-            return line.split(":", 1)[-1].strip()
+question = """
+Package A costs ₹20,000 and Package B costs ₹25,000.
+A 10% discount is applied to both packages.
 
-    return text.splitlines()[-1].strip() if text.strip() else "(empty)"
+Which package is cheaper after the discount, and what is the
+difference between their final prices?
 
+Return only the final answer in this format:
+Package: <A or B>; Difference: <amount>
+"""
 
-def run_many(question, runs=RUNS, temperature=TEMPERATURE):
-    answers = []
+print("===== SELF-CONSISTENCY TEST =====")
+print("Temperature: 0.8\n")
 
-    for attempt in range(1, runs + 1):
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": COT_PROMPT},
-                {"role": "user", "content": question},
-            ],
-            temperature=temperature,
-        )
+answers = []
 
-        answer = final_answer(response.choices[0].message.content)
+for i in range(5):
 
-        print(f"run {attempt}: {answer}")
-        answers.append(answer)
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-120b",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Solve the arithmetic problem carefully. "
+                    "Return only the requested final answer format."
+                )
+            },
+            {
+                "role": "user",
+                "content": question
+            }
+        ],
+        temperature=0
+    )
 
-    return answers
+    answer = response.choices[0].message.content.strip()
 
+    answers.append(answer)
 
-if __name__ == "__main__":
-    banner("SELF-CONSISTENCY")
+    print(f"Run {i + 1}: {answer}")
 
-    question = QUESTIONS[0]
+counts = Counter(answers)
 
-    print("QUESTION:", question, "\n")
+majority_answer, count = counts.most_common(1)[0]
 
-    answers = run_many(question)
-
-    winner, count = Counter(answers).most_common(1)[0]
-
-    print(f"\nMajority answer ({count} of {len(answers)} runs): {winner}")
+print("\n===== RESULT =====")
+print(f"Majority answer: {majority_answer}")
+print(f"Votes: {count} out of {len(answers)}")
